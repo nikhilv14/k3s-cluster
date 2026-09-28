@@ -1,0 +1,188 @@
+# tasks file for k3s_server
+# This role installs and configures the K3s server on the designated master node.
+
+- name: "K3S-SERVER | 1. Update apt package cache"
+  ansible.builtin.apt:
+    update_cache: true
+  become: true
+  changed_when: false
+  tags: k3s_server
+
+- name: "K3S-SERVER | 2. Install prerequisite system packages"
+  ansible.builtin.package:
+    name: "{{ system_packages }}"
+    state: present
+  become: true
+  tags: k3s_server
+
+- name: "K3S-SERVER | 2.1. Install Kubernetes Python library for Ansible modules"
+  ansible.builtin.pip:
+    name:
+      - kubernetes
+      - jmespath
+    state: present
+  become: true
+  tags: k3s_server
+
+- name: "K3S-SERVER | 3. Disable swap for Kubernetes compatibility"
+  ansible.builtin.command: swapoff -a
+  become: true
+  when: "ansible_swaptotal_mb > 0"
+  changed_when: false
+  tags: k3s_server
+
+- name: "K3S-SERVER | 3.1. Remove swap from /etc/fstab"
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^(\/.*swap.*)$'
+    replace: '# \1'
+  become: true
+  tags: k3s_server
+
+- name: "K3S-SERVER | 4. Load required kernel modules"
+  ansible.builtin.modprobe:
+    name: "{{ item }}"
+    state: present
+  become: true
+  loop:
+    - overlay
+    - br_netfilter
+  tags: k3s_server
+
+- name: "K3S-SERVER | 5. Persist kernel modules on boot"
+  ansible.builtin.copy:
+    dest: "/etc/modules-load.d/k3s.conf"
+    content: |
+      overlay
+      br_netfilter
+  become: true
+  tags: k3s_server
+
+- name: "K3S-SERVER | 6. Configure sysctl for Kubernetes networking"
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: "/etc/sysctl.d/99-kubernetes.conf"
+    state: present
+    reload: true
+  become: true
+  loop:
+    - { key: 'net.bridge.bridge-nf-call-iptables', value: '1' }
+    - { key: 'net.ipv4.ip_forward', value: '1' }
+    - { key: 'net.bridge.bridge-nf-call-ip6tables', value: '1' }
+  tags: k3s_server
+
+- name: "K3S-SERVER | 7. Create K3s configuration directory"
+  ansible.builtin.file:
+    path: /etc/rancher/k3s
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  become: true
+  tags: k3s_server
+
+- name: "K3S-SERVER | 8. Download K3s installer script"
+  ansible.builtin.get_url:
+    url: "https://get.k3s.io"
+    dest: "/tmp/k3s_install.sh"
+    mode: '0755'
+  retries: 3
+  delay: 10
+  tags: k3s_server
+
+- name: "K3S-SERVER | 9. Install K3s server"
+  ansible.builtin.command:
+    cmd: /tmp/k3s_install.sh server {{ k3s_server_args }}
+    creates: /usr/local/bin/k3s
+  environment:
+    INSTALL_K3S_VERSION: "{{ k3s_version }}"
+    K3S_TOKEN: "{{ k3s_token }}"
+  become: true
+  register: k3s_install_result
+  changed_when: "'k3s is already installed' not in k3s_install_result.stdout"
+  tags: k3s_server
+
+- name: "K3S-SERVER | 10. Wait for k3s.yaml to be created"
+  ansible.builtin.wait_for:
+    path: "{{ k3s_config_file }}"
+    timeout: 300
+    delay: 10
+  become: true
+  tags: k3s_server
+
+- name: "K3S-SERVER | 11. Wait for K3s API to be ready"
+  ansible.builtin.command: >
+    curl --cacert /var/lib/rancher/k3s/server/tls/server-ca.crt
+    --cert /var/lib/rancher/k3s/server/tls/client-admin.crt
+    --key /var/lib/rancher/k3s/server/tls/client-admin.key
+    https://127.0.0.1:6443/healthz
+  register: k3s_api_health
+  until: "'ok' in k3s_api_health.stdout"
+  retries: 30
+  delay: 10
+  changed_when: false
+  become: true
+  tags: k3s_server
+
+- name: "K3S-SERVER | 12. Get K3s node token"
+  ansible.builtin.slurp:
+    src: "{{ k3s_token_file }}"
+  become: true
+  register: k3s_node_token_b64
+  tags: k3s_server
+
+- name: "K3S-SERVER | 12.1. Store K3s node token"
+  ansible.builtin.set_fact:
+    k3s_node_token: "{{ k3s_node_token_b64['content'] | b64decode | trim }}"
+  tags: k3s_server
+
+- name: "K3S-SERVER | 13. Create .kube directory for ubuntu user"
+  ansible.builtin.file:
+    path: "/home/ubuntu/.kube"
+    state: directory
+    owner: ubuntu
+    group: ubuntu
+    mode: '0755'
+  become: true
+  tags: k3s_server
+
+- name: "K3S-SERVER | 13.1. Copy kubeconfig for ubuntu user"
+  ansible.builtin.copy:
+    src: "{{ k3s_config_file }}"
+    dest: "/home/ubuntu/.kube/config"
+    remote_src: true
+    owner: ubuntu
+    group: ubuntu
+    mode: '0600'
+  become: true
+  tags: k3s_server
+
+- name: "K3S-SERVER | 14. Wait for the server node to be ready"
+  kubernetes.core.k8s_info:
+    kind: Node
+    name: "{{ ansible_hostname }}"
+    kubeconfig: "{{ k3s_config_file }}"
+  register: node_status
+  until: >-
+    node_status | json_query("resources[0].status.conditions[?type=='Ready'].status | [0]") == 'True'
+  retries: 30
+  delay: 10
+  changed_when: false
+  tags: k3s_server
+
+- name: "K3S-SERVER | 15. Verify K3s cluster by getting nodes"
+  kubernetes.core.k8s_info:
+    kind: Node
+    kubeconfig: "{{ k3s_config_file }}"
+  register: k8s_nodes
+  changed_when: false
+  tags: k3s_server
+
+- name: "K3S-SERVER | 15.1. Display cluster nodes"
+  ansible.builtin.debug:
+    msg: "K3s node '{{ item.metadata.name }}' is {{ (item.status.conditions | selectattr('type', 'equalto', 'Ready') | list)[0].status }}"
+  loop: "{{ k8s_nodes.resources }}"
+  loop_control:
+    label: "{{ item.metadata.name }}"
+  tags: k3s_server

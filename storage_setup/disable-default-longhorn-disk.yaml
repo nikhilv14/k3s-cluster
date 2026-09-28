@@ -1,0 +1,4 @@
+spec:
+  disks:
+    default-disk-fcdc0a4aa20f13f6:
+      allowScheduling: false

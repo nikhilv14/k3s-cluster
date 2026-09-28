@@ -1,0 +1,121 @@
+# Master Playbook for N100 K3s Server Deployment
+# This playbook orchestrates the local deployment of K3s and Longhorn.
+
+- name: "Phase 1 Day 2: Setup K3s Server on N100"
+  hosts: k3s_servers
+  gather_facts: true
+  become: false # Most tasks in the role handle their own privilege escalation
+
+  pre_tasks:
+    - name: "Display deployment information"
+      ansible.builtin.debug:
+        msg:
+          - "Starting K3s v{{ k3s_version }} deployment on {{ inventory_hostname }} ({{ ansible_host }})..."
+          - "Target: K3s + Longhorn"
+
+  roles:
+    - role: k3s_server
+      tags: k3s_server
+
+- name: "Fetch Kubeconfig for Local Admin"
+  hosts: k3s_servers
+  gather_facts: false
+  become: false
+  vars:
+    k3s_config_file: "/etc/rancher/k3s/k3s.yaml"
+  tasks:
+    - name: "Fetch kubeconfig file to local machine"
+      ansible.builtin.fetch:
+        src: "{{ k3s_config_file }}"
+        dest: "./k3s.yaml"
+        flat: yes
+
+    - name: "Replace 127.0.0.1 with server IP in local kubeconfig"
+      ansible.builtin.replace:
+        path: "./k3s.yaml"
+        regexp: '127\.0\.0\.1'
+        replace: "{{ ansible_host }}"
+      delegate_to: localhost
+
+- name: "Setup Longhorn Storage"
+  hosts: k3s_servers
+  gather_facts: false
+  become: false
+  environment:
+    KUBECONFIG: "{{ playbook_dir }}/../k3s.yaml"
+  tasks:
+    - name: "Include Longhorn storage role"
+      ansible.builtin.include_role:
+        name: storage_longhorn
+
+- name: "Setup NFS Storage"
+  hosts: k3s_servers
+  gather_facts: false
+  become: false
+  environment:
+    KUBECONFIG: "{{ playbook_dir }}/../k3s.yaml"
+  tasks:
+    - name: "Include NFS storage role"
+      ansible.builtin.include_role:
+        name: storage_nfs
+
+- name: "Final Verification"
+  hosts: k3s_servers
+  gather_facts: false
+  become: true # For running kubectl commands
+  vars:
+    kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
+  tasks:
+    - name: "FINAL | Verify K3s node is Ready"
+      ansible.builtin.command: "k3s kubectl get nodes -o custom-columns=NAME:.metadata.name,STATUS:.status.conditions[?(@.type=='Ready')].status"
+      register: nodes_status
+      changed_when: false
+      tags: verification
+
+    - name: "FINAL | Verify Storage Classes (longhorn, nas)"
+      ansible.builtin.command: >
+        k3s kubectl get sc -o custom-columns=NAME:.metadata.name,DEFAULT:.metadata.annotations.storageclass.kubernetes.io/is-default-class
+      register: sc_status
+      changed_when: false
+      tags: verification
+
+    - name: "FINAL | Verify Longhorn pods are Running"
+      ansible.builtin.command: "k3s kubectl get pods -n longhorn-system --no-headers | awk '{print $3}'"
+      register: longhorn_pods
+      changed_when: false
+      failed_when: "'Running' not in longhorn_pods.stdout and 'Completed' not in longhorn_pods.stdout"
+      tags: verification
+
+    - name: "FINAL | Verify NFS PV and PVC"
+      ansible.builtin.command: "k3s kubectl get pv,pvc -n storage --no-headers"
+      register: nfs_status
+      changed_when: false
+      tags: verification
+
+    - name: "FINAL | Display Verification Results"
+      ansible.builtin.debug:
+        msg:
+          - "========================================================================="
+          - "✅ Phase 1 Day 2 COMPLETE"
+          - "K3s + Longhorn + NFS are ready."
+          - "========================================================================="
+          - ""
+          - "=== K3s Nodes ==="
+          - "{{ nodes_status.stdout_lines | join('\n') }}"
+          - ""
+          - "=== Storage Classes ==="
+          - "{{ sc_status.stdout_lines | join('\n') }}"
+          - ""
+          - "=== Longhorn Pods Status ==="
+          - "All pods are Running or Completed."
+          - ""
+          - "=== NFS PV/PVC Status (in 'storage' namespace) ==="
+          - "{{ nfs_status.stdout_lines | join('\n') }}"
+          - ""
+
+    - name: "Final success message"
+      ansible.builtin.debug:
+        msg:
+          - "✅ Playbook complete. The kubeconfig file has been saved to ./k3s.yaml"
+          - "To use it, run: export KUBECONFIG=$(pwd)/k3s.yaml"
+      delegate_to: localhost

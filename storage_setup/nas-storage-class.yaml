@@ -1,0 +1,17 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: nas-rwx
+provisioner: nfs.csi.k8s.io
+allowVolumeExpansion: true
+parameters:
+  server: 192.168.12.50
+  share: /mnt/Generic_1TB/k3s_pool
+  subDir: "${.PVC.namespace}-${.PVC.name}"
+mountOptions:
+- vers=4
+- noatime
+- soft
+- timeo=30
+reclaimPolicy: Delete
+volumeBindingMode: Immediate

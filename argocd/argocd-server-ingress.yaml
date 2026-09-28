@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server-ingress
+  namespace: argocd
+  annotations:
+    cert-manager.io/cluster-issuer: internal-ca
+    nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # Uncomment for LAN-only access:
+    # nginx.ingress.kubernetes.io/whitelist-source-range: \"192.168.12.0/24,172.31.0.0/16\"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - argocd.home
+    secretName: argocd-server-tls
+  rules:
+  - host: argocd.home
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: argocd-server
+            port:
+              name: https

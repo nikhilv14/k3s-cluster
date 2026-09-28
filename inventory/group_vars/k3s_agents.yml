@@ -1,0 +1,23 @@
+# Group variables for K3s agents
+# These settings apply to all nodes in the 'k3s_agents' group.
+
+# K3s Core Configuration
+k3s_version: "v1.28.4+k3s2"
+
+# Agent Node Configuration
+# These can be overridden per-host in the inventory file.
+node_name: "{{ inventory_hostname }}"
+node_ip: "{{ ansible_host }}"
+taints: "" # e.g., "CriticalAddonsOnly=true:NoExecute"
+
+# System packages required for K3s agents
+system_packages:
+  - curl
+  - wget
+  - jq
+  - nfs-common
+  - open-iscsi
+  - apt-transport-https
+  - ca-certificates
+  - gnupg
+  - lsb-release

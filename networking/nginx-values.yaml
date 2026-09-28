@@ -1,0 +1,17 @@
+controller:
+  service:
+    type: LoadBalancer
+  replicaCount: 1
+  nodeSelector:
+    homelab/node-type: always-on
+  tolerations:
+  - key: "node-role.kubernetes.io/control-plane"
+    operator: Exists
+    effect: NoSchedule
+  ingressClassResource:
+    default: true
+    controllerValue: k8s.io/ingress-nginx
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi

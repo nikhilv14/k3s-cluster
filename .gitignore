@@ -1,0 +1,24 @@
+# Python
+venv/
+__pycache__/
+
+# Terraform / k8s nodes
+k8s-nodes-setup/.terraform/
+*.tfstate
+*.tfstate.backup
+
+# Secrets
+*.pem
+*.key
+*.crt
+k3s.yaml
+backup-token.k3s
+inventory/*vault*
+plans/
+
+# Misc
+.vscode/
+.ansible/
+*.swp
+k3s_token.secret
+*.secret

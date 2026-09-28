@@ -1,0 +1,12 @@
+# defaults file for storage_longhorn
+# Provides default values for the Longhorn role.
+
+# Number of data replicas for each volume. For a single-node cluster, this must be 1.
+longhorn_replicas: 1
+
+# Whether to make Longhorn the default storage class for the cluster.
+longhorn_storage_class_default: true
+
+# Default resource limits for Longhorn components.
+longhorn_cpu_limit: "500m"
+longhorn_mem_limit: "512Mi"

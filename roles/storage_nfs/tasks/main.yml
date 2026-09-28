@@ -1,0 +1,78 @@
+# tasks file for storage_nfs
+# This role sets up the NFS storage resources in the cluster.
+
+- name: "NFS | 1. Create NFS StorageClass"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: storage.k8s.io/v1
+      kind: StorageClass
+      metadata:
+        name: "{{ nfs_storageclass_name }}"
+      provisioner: "{{ nfs_provisioner }}"
+      reclaimPolicy: Delete
+      volumeBindingMode: Immediate
+      mountOptions:
+        - "vers=4"
+        - "timeo=600"
+        - "retrans=2"
+        - "hard"
+        - "intr"
+  delegate_to: localhost
+  run_once: true
+  tags: nfs_storage
+
+- name: "NFS | 2. Create storage namespace"
+  kubernetes.core.k8s:
+    name: "{{ nfs_namespace }}"
+    api_version: v1
+    kind: Namespace
+    state: present
+  delegate_to: localhost
+  run_once: true
+  tags: nfs_storage
+
+- name: "NFS | 3. Create NFS PersistentVolume"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: PersistentVolume
+      metadata:
+        name: "{{ nfs_pv_name }}"
+        namespace: "{{ nfs_namespace }}"
+      spec:
+        capacity:
+          storage: "{{ nfs_pv_capacity }}"
+        volumeMode: Filesystem
+        accessModes:
+          - ReadWriteMany
+        persistentVolumeReclaimPolicy: Retain
+        storageClassName: "{{ nfs_storageclass_name }}"
+        nfs:
+          path: "{{ nfs_server_path }}"
+          server: "{{ nfs_server_ip }}"
+          readOnly: false
+  delegate_to: localhost
+  run_once: true
+  tags: nfs_storage
+
+- name: "NFS | 4. Create a test PersistentVolumeClaim"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: "{{ nfs_pvc_name }}"
+        namespace: "{{ nfs_namespace }}"
+      spec:
+        storageClassName: "{{ nfs_storageclass_name }}"
+        accessModes:
+          - ReadWriteMany
+        resources:
+          requests:
+            storage: "{{ nfs_pvc_capacity }}"
+  delegate_to: localhost
+  run_once: true
+  tags: nfs_storage

@@ -1,0 +1,11 @@
+# defaults file for storage_nfs
+
+nfs_storageclass_name: "nas"
+nfs_provisioner: "kubernetes.io/nfs"
+nfs_namespace: "storage"
+nfs_pv_name: "nas-storage-pv"
+nfs_pv_capacity: "8Ti"
+nfs_pvc_name: "nas-test-pvc"
+nfs_pvc_capacity: "10Gi"
+nfs_server_ip: "192.168.12.50" # This is the IP of the TrueNAS server
+nfs_server_path: "/mnt/main/k3s" # The NFS share path on the server

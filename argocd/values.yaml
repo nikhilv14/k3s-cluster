@@ -1,0 +1,96 @@
+---
+# Argo CD Helm Chart Values - Optimized for Homelab K3s
+
+global:
+  domain: argocd.home
+  # Primary account username
+  primaryAccount:
+    username: admin
+
+# Disable Dex for local auth
+dex:
+  enabled: false
+
+# Notifications off
+notifications:
+  enabled: false
+
+# Redis - Single replica, pinned to always-on node
+redis:
+  enabled: true
+  nodeSelector:
+    homelab/node-type: always-on
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 10m
+      memory: 64Mi
+
+# Redis HA disabled
+redis-ha:
+  enabled: false
+
+# Server - 2 replicas, spread across nodes
+server:
+  replicas: 2
+  insecure: true  # HTTP backend for NGINX TLS termination
+  ingress:
+    enabled: false  # Custom Ingress
+  service:
+    type: ClusterIP
+    ports:
+      http: 80
+  # Spread across available nodes
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: argocd-server
+  resources:
+    limits:
+      cpu: 250m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+# Repo Server - 2 replicas, spread
+repoServer:
+  replicas: 2
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: argocd-repo-server
+  resources:
+    limits:
+      cpu: "1"
+      memory: 1Gi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+# Application Controller - Pinned to always-on
+applicationController:
+  replicas: 1
+  nodeSelector:
+    homelab/node-type: always-on
+  resources:
+    limits:
+      cpu: 250m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+# Disable extra components
+configs:
+  cm:
+    admin.enabled: "true"
+    url: "https://argocd.home"
