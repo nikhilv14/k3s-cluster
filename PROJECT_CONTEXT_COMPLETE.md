@@ -4,6 +4,31 @@
 
 ***
 
+## ⚡ CURRENT STATE (2026-10-07) — READ THIS FIRST
+The cluster has evolved beyond the original single-node Phase 1 design:
+
+- **3 control-plane servers** (embedded etcd, HA): `k3s-node1`/n100 (192.168.12.51),
+  `k3s-server-nuc` (192.168.12.110), `k3s-server-hp-g9` (192.168.12.132)
+- **k3s v1.36.5+k3s1**, flannel **vxlan on standard UDP 8472** (the old WSL2
+  workaround with UDP 48472 + `/etc/rancher/k3s/flannel-net-conf.json` is RETIRED —
+  do not re-add it; a port mismatch between nodes splits the overlay network)
+- **API VIP via kube-vip** (ARP, leader election): `https://192.168.12.10:6443`
+  — kubeconfig and node-join URLs use the VIP (manifest: `networking/kube-vip.yaml`)
+- **Ingress**: ingress-nginx (chart 4.14.1) + MetalLB (v0.14.5), VIP `192.168.12.61`
+  from lan-pool `.61-.70`; traefik + klipper servicelb are DISABLED in k3s config
+- **Storage**: Longhorn v1.10.1 — default SC `longhorn` (2 replicas, default class),
+  `ssd-cache` SC (2 replicas, requires node/disk tag `ssd` — tagged on all 3 servers),
+  `nas-rwx` NFS CSI SC; all server nodes labeled `longhorn-system=true`
+- **cert-manager** v1.21.2; `ca-root` Certificate has `isCA: true` + 10y duration
+  (a missing isCA broke internal-ca for months); tandoor ingress uses `internal-ca`
+- **WSL2 agent and T3600 agent are DECOMMISSIONED** (playbooks removed)
+
+Apps are deployed via ArgoCD from the `argo-quick-apps` repo (immich, tandoor,
+cloudflared, kubernetes-dashboard).
+
+***
+
+
 ## 🏗️ **FINAL ARCHITECTURE**
 ```
 N100 (192.168.12.51) - K3s Control Plane + Worker

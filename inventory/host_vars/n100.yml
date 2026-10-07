@@ -1,0 +1,18 @@
+# Host-specific config for n100 (k3s-node1).
+# The NAS mount /mnt/nas-k3s-snapshots exists only on this node, so the
+# etcd snapshot settings live here and are merged into /etc/rancher/k3s/config.yaml
+# only for this host. Applies on top of group_vars/k3s_servers.yml:k3s_config_extra.
+
+k3s_config_host_extra:
+  etcd-snapshot-schedule-cron: "0 2 * * *"       # Daily 02:00
+  etcd-snapshot-retention: 7                     # Auto-prune old ones
+  etcd-snapshot-compress: true
+  etcd-snapshot-dir: "/mnt/nas-k3s-snapshots/k3s-snapshots"
+
+# Node labels applied by the k3s_server role. n100 is the only 'always-on'
+# node (MetalLB L2Advertisement + ingress-nginx controller pin to it).
+node_labels:
+  - homelab/node-type=always-on
+
+# Kubernetes node name (k3s uses the hostname). n100 hostname is k3s-node1.
+k8s_node_name: k3s-node1

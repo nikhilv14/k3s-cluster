@@ -26,14 +26,15 @@
   kubernetes.core.helm:
     name: longhorn
     chart_ref: longhorn/longhorn
+    chart_version: "{{ longhorn_chart_version }}"
     release_namespace: longhorn-system
     create_namespace: true
     values:
       persistence:
-        defaultClassReplicaCount: "{{ longhorn_replicas }}"
+        defaultClassReplicaCount: "{{ longhorn_sc_replica_count }}"
       defaultSettings:
         defaultDataLocality: "best-effort"
-        defaultReplicaCount: "{{ longhorn_replicas }}"
+        defaultReplicaCount: "{{ longhorn_default_replicas }}"
       longhornManager:
         resources:
           limits:
@@ -52,6 +53,61 @@
   register: longhorn_install
   retries: 3
   delay: 15
+  tags: longhorn
+
+- name: "LONGHORN | 3.1. Label all server nodes for Longhorn (longhorn-system nodeSelector)"
+  delegate_to: localhost
+  run_once: true
+  kubernetes.core.k8s:
+    state: patched
+    kind: Node
+    name: "{{ hostvars[item]['k8s_node_name'] }}"
+    definition:
+      metadata:
+        labels:
+          longhorn-system: "true"
+  loop: "{{ groups['k3s_servers'] }}"
+  tags: longhorn
+
+- name: "LONGHORN | 3.2. Wait for Longhorn node CRs to be created"
+  delegate_to: localhost
+  run_once: true
+  kubernetes.core.k8s_info:
+    api_version: longhorn.io/v1beta2
+    kind: Node
+    namespace: longhorn-system
+    name: "{{ hostvars[item]['k8s_node_name'] }}"
+  register: longhorn_node_crs
+  until: "longhorn_node_crs.resources | length > 0"
+  retries: 30
+  delay: 10
+  loop: "{{ groups['k3s_servers'] }}"
+  tags: longhorn
+
+- name: "LONGHORN | 3.3. Tag nodes as 'ssd' (required by ssd-cache StorageClass nodeSelector)"
+  delegate_to: localhost
+  run_once: true
+  ansible.builtin.shell: |
+    set -e
+    for node in $(kubectl get nodes.longhorn.io -n longhorn-system -o jsonpath='{.items[*].metadata.name}'); do
+      kubectl -n longhorn-system patch nodes.longhorn.io "$node" --type=merge \
+        -p '{"spec":{"tags":{{ longhorn_node_tags | to_json }}}}' >/dev/null
+    done
+  changed_when: false
+  tags: longhorn
+
+- name: "LONGHORN | 3.4. Tag every disk as 'ssd' (required by ssd-cache StorageClass diskSelector)"
+  delegate_to: localhost
+  run_once: true
+  ansible.builtin.shell: |
+    set -e
+    for node in $(kubectl get nodes.longhorn.io -n longhorn-system -o jsonpath='{.items[*].metadata.name}'); do
+      patch=$(kubectl -n longhorn-system get nodes.longhorn.io "$node" -o json \
+        | jq -c --argjson tags '{{ longhorn_disk_tags | to_json }}' \
+          '{disks: (.spec.disks | to_entries | map({(.key: (.value + {tags: ((.value.tags // []) + $tags | unique)})})) | add)}')
+      kubectl -n longhorn-system patch nodes.longhorn.io "$node" --type=merge -p "$patch" >/dev/null
+    done
+  changed_when: false
   tags: longhorn
 
 - name: "LONGHORN | 4. Wait for Longhorn manager to be ready"

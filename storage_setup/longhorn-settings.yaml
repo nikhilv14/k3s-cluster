@@ -1,9 +1,13 @@
 # Longhorn cluster-wide settings: speed + redundancy
-# - default-replica-count 2: every volume gets a replica on node1 (NVMe "ssd" disk)
-#   plus a second replica on wsl2-debian-worker (fast NVMe, tagged "ssd")
-# - replica-auto-balance evenly: Longhorn spreads replicas across nodes automatically
-# Storage classes control dataLocality (strict-local keeps the engine + 1 replica
-# on the writer node; the 2nd replica adds node-failure tolerance).
+# - default-replica-count 1: volumes provisioned via the default 'longhorn'
+#   StorageClass get 1 replica by default (matches live cluster; the longhorn
+#   SC itself carries numberOfReplicas=2, and ssd-cache uses 2 via its params).
+# - replica-auto-balance least-effort: spread replicas; best-effort requires
+#   3+ zone/node awareness.
+# - snapshot-max-count 250: ceiling for the snapshot chain per volume
+#   (live volumes carry 2-3 snapshots each).
+# Storage classes control dataLocality (ssd-cache: best-effort keeps the engine
+# + 1 replica on the writer node; the 2nd replica adds node-failure tolerance).
 # NOTE: Longhorn v1.10 Setting CRDs carry the value as a top-level "value"
 # field (no spec). default-replica-count uses the v1/v2 data-engine map format.
 ---
@@ -12,7 +16,7 @@ kind: Setting
 metadata:
   name: default-replica-count
   namespace: longhorn-system
-value: '{"v1":"2","v2":"2"}'
+value: '{"v1":"1","v2":"1"}'
 ---
 apiVersion: longhorn.io/v1beta2
 kind: Setting

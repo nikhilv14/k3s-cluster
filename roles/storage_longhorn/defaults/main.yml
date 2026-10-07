@@ -1,8 +1,13 @@
 # defaults file for storage_longhorn
 # Provides default values for the Longhorn role.
 
-# Number of data replicas for each volume. For a single-node cluster, this must be 1.
-longhorn_replicas: 1
+# Cluster-wide default replicas for NEW volumes (Setting default-replica-count).
+# The default 'longhorn' StorageClass and 'ssd-cache' both carry 2 replicas
+# via their own params - see longhorn_sc_replica_count.
+longhorn_default_replicas: 1
+
+# numberOfReplicas param on the default 'longhorn' StorageClass.
+longhorn_sc_replica_count: 2
 
 # Whether to make Longhorn the default storage class for the cluster.
 longhorn_storage_class_default: true
@@ -10,3 +15,10 @@ longhorn_storage_class_default: true
 # Default resource limits for Longhorn components.
 longhorn_cpu_limit: "500m"
 longhorn_mem_limit: "512Mi"
+
+# Pin the chart so re-running never silently upgrades the release.
+longhorn_chart_version: "1.10.1"
+
+# Node/disk tags required by the ssd-cache StorageClass (nodeSelector/diskSelector).
+longhorn_node_tags: ["ssd"]
+longhorn_disk_tags: ["ssd"]

@@ -24,18 +24,20 @@
   vars:
     k3s_config_file: "/etc/rancher/k3s/k3s.yaml"
   tasks:
-    - name: "Fetch kubeconfig file to local machine"
+    - name: "Fetch kubeconfig file to local machine (first server wins)"
       ansible.builtin.fetch:
         src: "{{ k3s_config_file }}"
         dest: "./k3s.yaml"
         flat: yes
+      run_once: true
 
-    - name: "Replace 127.0.0.1 with server IP in local kubeconfig"
+    - name: "Replace 127.0.0.1 with the API VIP in local kubeconfig"
       ansible.builtin.replace:
         path: "./k3s.yaml"
         regexp: '127\.0\.0\.1'
-        replace: "{{ ansible_host }}"
+        replace: "{{ kube_vip_address }}"
       delegate_to: localhost
+      run_once: true
 
 - name: "Setup Longhorn Storage"
   hosts: k3s_servers

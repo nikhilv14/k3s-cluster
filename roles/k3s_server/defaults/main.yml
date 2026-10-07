@@ -3,13 +3,22 @@
 # by group_vars or host_vars.
 
 # K3s Core Defaults
-k3s_version: "v1.28.4+k3s2"
+k3s_version: "v1.36.5+k3s1"
 k3s_token: "" # Must be set in group_vars/k3s_servers.yml for security
 k3s_token_file: "/var/lib/rancher/k3s/server/node-token"
 k3s_config_file: "/etc/rancher/k3s/k3s.yaml"
 
+# API VIP for kube-vip (must also be in the server certs' tls-san)
+kube_vip_address: "192.168.12.10"
+
 # K3s server arguments (intentionally empty, defined in group_vars)
 k3s_server_args: ""
+
+# Config.yaml extras (intentionally empty, defined in group_vars/host_vars)
+k3s_config_extra: {}
+
+# Node labels (intentionally empty, defined in host_vars)
+node_labels: []
 
 # System packages (intentionally empty, defined in group_vars)
 system_packages: []

@@ -13,6 +13,10 @@ metadata:
   namespace: cert-manager
 spec:
   secretName: ca-key-pair
+  isCA: true                      # REQUIRED - without it cert-manager issues a
+                                  # leaf cert (CA:FALSE) and internal-ca fails
+                                  # with ErrInvalidKeyPair "certificate is not a CA"
+  duration: 87600h0m0s            # 10 years for the root CA
   issuerRef:
     name: selfsigned-issuer
     kind: ClusterIssuer

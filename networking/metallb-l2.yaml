@@ -15,4 +15,8 @@ metadata:
 spec:
   ipAddressPools:
   - lan-pool
+  # Only announce VIPs from nodes labeled always-on (live cluster state).
+  nodeSelectors:
+  - matchLabels:
+      homelab/node-type: always-on
 
