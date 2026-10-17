@@ -1,0 +1,124 @@
+---
+- name: Fix stuck Longhorn volume and clean up stale iSCSI sessions
+  hosts: k3s_servers
+  gather_facts: true
+  become: true
+  vars:
+    stuck_volume: pvc-61161c6a-f054-428d-9700-ff4e64a3bd73
+    stuck_volume_target: "iqn.2019-10.io.longhorn:{{ stuck_volume }}"
+
+  tasks:
+    - name: "FIX | 1. Find and delete stale iSCSI sessions for stuck volume"
+      block:
+        - name: "FIX | 1.1. List all iSCSI sessions"
+          ansible.builtin.shell: "iscsiadm -m session 2>/dev/null || echo 'No sessions'"
+          register: iscsi_sessions
+          changed_when: false
+
+        - name: "FIX | 1.2. Logout from stuck volume session"
+          ansible.builtin.shell: |
+            iscsiadm -m session --sid {{ item }} -u 2>/dev/null || true
+            iscsiadm -m node -o delete -T {{ stuck_volume_target }} 2>/dev/null || true
+          loop: "{{ iscsi_sessions.stdout | regex_search('tcp: \\[(\\d+)\\].*' ~ stuck_volume_target, multiline=True) | default([], true) | list }}"
+          when: stuck_volume_target in iscsi_sessions.stdout
+          changed_when: false
+          ignore_errors: true
+
+        - name: "FIX | 1.3. Restart iSCSI service to clean up any remaining sessions"
+          ansible.builtin.systemd:
+            name: iscsid
+            state: restarted
+          when: iscsi_sessions.stdout is defined and stuck_volume_target in iscsi_sessions.stdout
+
+    - name: "FIX | 2. Force detach the stuck volume in Longhorn"
+      delegate_to: localhost
+      run_once: true
+      kubernetes.core.k8s:
+        api_version: longhorn.io/v1beta2
+        kind: Volume
+        name: "{{ stuck_volume }}"
+        namespace: longhorn-system
+        definition:
+          spec:
+            nodeID: ""
+
+    - name: "FIX | 3. Wait for volume to be fully detached"
+      delegate_to: localhost
+      run_once: true
+      kubernetes.core.k8s_info:
+        api_version: longhorn.io/v1beta2
+        kind: Volume
+        namespace: longhorn-system
+        name: "{{ stuck_volume }}"
+      register: volume_info
+      until: "volume_info.resources[0].status.state == 'detached' or volume_info.resources[0].status.state == 'attaching'"
+      retries: 30
+      delay: 10
+      changed_when: false
+
+    - name: "FIX | 4. Trigger volume reattachment by updating status"
+      delegate_to: localhost
+      run_once: true
+      ansible.builtin.shell: |
+        kubectl -n longhorn-system patch volume {{ stuck_volume }} --type='merge' \
+          -p '{"status":{"state":"attaching","currentNodeID":"","ownerID":"","robustness":""}}'
+      args:
+        executable: /bin/bash
+      changed_when: false
+      ignore_errors: true
+
+    - name: "FIX | 5. Wait for volume to be attached"
+      delegate_to: localhost
+      run_once: true
+      kubernetes.core.k8s_info:
+        api_version: longhorn.io/v1beta2
+        kind: Volume
+        namespace: longhorn-system
+        name: "{{ stuck_volume }}"
+      register: volume_info
+      until: "volume_info.resources[0].status.state == 'attached' and volume_info.resources[0].status.robustness == 'healthy'"
+      retries: 60
+      delay: 10
+      changed_when: false
+
+    - name: "FIX | 6. Restart share manager for stuck volume"
+      delegate_to: localhost
+      run_once: true
+      kubernetes.core.k8s:
+        state: deleted
+        api_version: v1
+        kind: Pod
+        namespace: longhorn-system
+        label_selectors:
+          - "longhorn.io/share-manager={{ stuck_volume }}"
+      ignore_errors: true
+      changed_when: false
+
+    - name: "FIX | 7. Wait for share manager to be ready"
+      delegate_to: localhost
+      run_once: true
+      kubernetes.core.k8s_info:
+        api_version: longhorn.io/v1beta2
+        kind: ShareManager
+        namespace: longhorn-system
+        name: "{{ stuck_volume }}"
+      register: share_manager_info
+      until: "share_manager_info.resources[0].status.state == 'running' and share_manager_info.resources[0].status.endpoint != ''"
+      retries: 30
+      delay: 10
+      changed_when: false
+
+    - name: "FIX | 8. Verify immich-server pods are running"
+      delegate_to: localhost
+      run_once: true
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: immich
+        label_selectors:
+          - "app.kubernetes.io/name=immich-server"
+      register: immich_pods
+      until: "immich_pods.resources | map(attribute='status.phase') | all(item == 'Running')"
+      retries: 30
+      delay: 15
+      changed_when: false
