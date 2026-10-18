@@ -1,0 +1,35 @@
+# k3s-worker-z690: privileged LXC container (PVE host 192.168.12.200)
+# ==========================================
+#
+# CRITICAL CONSTRAINT
+# -------------------
+# This node is an unprivileged-adjacent LXC container sharing the PVE host
+# kernel (currently 7.0.14-20-pve). The iSCSI transport netlink listener
+# (`scsi_transport_iscsi`) is namespaced to the host init_net. `iscsid`
+# started inside this container's network namespace cannot open the netlink
+# socket because the subsystem is not registered in its view of the kernel,
+# so every iSCSI session login fails with `ECONNREFUSED` on ctrl_fd.
+#
+# Consequently:
+#   - **NO Longhorn** — Longhorn's engine pods embed `iscsid` in a
+#     mount-namespace (worse than LXC netns). Guaranteed to wedge.
+#   - **NO block-device CSI drivers** (democratic-csi iSCSI, Rook, etc.).
+#   - NFS (including democratic-csi-nfs freenas-api-nfs) works fine —
+#     the kernel NFS client is always available inside the container.
+#   - `local-path` works fine.
+#
+# SCHEDULING POLICY
+# -----------------
+# A taint prevents CSI/block workloads from being scheduled here:
+#   lxc-no-iscsi=true:NoSchedule
+#
+# Stateless-only workloads (ML inference, exporters, dashboards, etc.)
+# explicitly opt in with a toleration:
+#   - key: lxc-no-iscsi
+#     operator: Equal
+#     value: "true"
+#     effect: NoSchedule
+#
+# The taint is applied manually:
+#   kubectl taint node k3s-worker-z690 lxc-no-iscsi=true:NoSchedule
+# If it is ever lost (cluster rebuild), re-run that command.
