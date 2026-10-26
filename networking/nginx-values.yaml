@@ -9,6 +9,9 @@ controller:
   - key: "node-role.kubernetes.io/control-plane"
     operator: Exists
     effect: NoSchedule
+  - key: "lxc-no-iscsi"
+    operator: Exists
+    effect: NoSchedule
   ingressClassResource:
     default: true
     controllerValue: k8s.io/ingress-nginx
