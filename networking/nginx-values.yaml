@@ -1,9 +1,10 @@
 controller:
-  service:
-    type: LoadBalancer
-  replicaCount: 1
-  nodeSelector:
-    homelab/node-type: always-on
+  kind: DaemonSet
+  hostPort:
+    enabled: true
+    ports:
+      http: 80
+      https: 443
   tolerations:
   - key: "node-role.kubernetes.io/control-plane"
     operator: Exists
