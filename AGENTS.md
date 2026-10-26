@@ -31,8 +31,11 @@ they deploy via ArgoCD from `git@github.com:nikhilv14/argo-quick-apps.git`.
 Rules:
 - kubeconfig and node-join URLs use `https://192.168.12.10:6443` (VIP in tls-san on all servers)
 - MetalLB VIPs must stay OUTSIDE the API VIP; lan-pool is `.61-.70`
-- Only nodes labeled `homelab/node-type=always-on` announce VIPs and run
-  ingress-nginx (currently only k3s-node1)
+- Only nodes labeled `homelab/node-type=always-on` announce VIPs (currently only k3s-node1)
+- ingress-nginx runs as a DaemonSet with hostPort 80/443 on ALL nodes
+  (added 2026-10-26 so the Proxmox vlan250 NICs — z690 .160, nuc .161,
+  hp-g9 .162 — serve ingress L2-locally for dmz-ingress; controller is no
+  longer gated on the `always-on` label)
 
 ## Critical gotchas (learned the hard way)
 
